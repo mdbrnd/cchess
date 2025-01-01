@@ -3,7 +3,7 @@ ifeq ($(OS),Windows_NT)
     PLATFORM = Windows
     CC = gcc
     EXT = .exe
-    CFLAGS = -O2 -Wall -Wextra
+    CFLAGS = -g -O2 -Wall -Wextra
     INCLUDES = -I include/
     LDFLAGS = -L lib/
     LIBS = -lraylib -lopengl32 -lgdi32 -lwinmm
@@ -13,7 +13,7 @@ else
         PLATFORM = Linux
         CC = gcc
         EXT =
-        CFLAGS = -O2 -Wall -Wextra
+        CFLAGS = -g -O2 -Wall -Wextra
         INCLUDES = -I include/
         LDFLAGS = -L lib/
         LIBS = -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
@@ -22,7 +22,7 @@ else
         PLATFORM = macOS
         CC = clang
         EXT =
-        CFLAGS = -O2 -Wall -Wextra
+        CFLAGS = -g -O2 -Wall -Wextra
         INCLUDES = -I include/
         LDFLAGS = -L lib/
         LIBS = -lraylib -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
@@ -30,10 +30,10 @@ else
 endif
 
 # Output executable name
-TARGET = game$(EXT)
+TARGET = chess$(EXT)
 
 # Source files
-SRC = main.c
+SRC = src/main.c src/renderer.c src/chess.c
 
 # Default target
 all: $(TARGET)
