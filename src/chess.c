@@ -73,8 +73,16 @@ bool is_within_bounds(int x, int y)
     return false;
 }
 
-move_list get_valid_moves(game *game, int x, int y)
-{
+move_list get_valid_moves(game *game, int x, int y) {
+    move_list m = { .moves = {}, .count = 2 };
+
+    // First dummy move: move piece one square right
+    m.moves[0] = (move){x, y, x, y + 1};
+
+    // Second dummy move: move piece one square down
+    m.moves[1] = (move){x, y, x + 1, y};
+
+    return m;
 }
 
 bool is_valid_move(move move)
