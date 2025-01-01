@@ -7,8 +7,10 @@
 int main()
 {
     const int CELL_SIZE = 160;
-    const int BOARD_LABEL_WIDTH = 50; // Area where numbers and letters are
+    const int BOARD_LABEL_WIDTH = 50; // Area where numbers and letters are (1-8, A-H)
     const int PADDING = BOARD_LABEL_WIDTH / 3;
+    const int FONT_SIZE = CELL_SIZE / 5;
+    const int GAME_OVER_TIME = 3000;
 
     const int SCREEN_WIDTH = CELL_SIZE * 8 + BOARD_LABEL_WIDTH;
     const int SCREEN_HEIGHT = CELL_SIZE * 8 + BOARD_LABEL_WIDTH;
@@ -16,7 +18,9 @@ int main()
     const Color CELL_COLOR_2 = {238, 220, 151, 255};
     const Color SIDEBAR_COLOR = {21, 10, 4, 255};
     const Color HIGHLIGHT_COLOR = {255, 255, 0, 200};
+    const Color TEXT_BACKGROUND = {0, 0, 0, 200};
 
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
     InitAudioDevice();
     SetTargetFPS(60);
@@ -36,9 +40,29 @@ int main()
     Sound castleSound = LoadSound("assets/castle.wav");
 
     int selectedSquare = -1;
+    move_list valid_moves = {.moves = {}, .count = 0};
+
+    double game_over_timer = 0;
 
     while (!WindowShouldClose())
     {
+        if (game.status == WhiteWon)
+        {
+            SetWindowTitle("Chess - White Won!");
+        }
+        else if (game.status == BlackWon)
+        {
+            SetWindowTitle("Chess - Black Won!");
+        }
+        else if (game.current_turn == CChessWhite)
+        {
+            SetWindowTitle("Chess - White's Turn");
+        }
+        else
+        {
+            SetWindowTitle("Chess - Black's Turn");
+        }
+
         BeginDrawing();
 
         ClearBackground(SIDEBAR_COLOR);
@@ -79,7 +103,7 @@ int main()
         {
             char num[2]; // 1 byte for char itself, 1 for string termination char
             snprintf(num, sizeof(num), "%d", 8 - i);
-            DrawText(num, PADDING, CELL_SIZE / 2 + i * CELL_SIZE, 30, WHITE);
+            DrawText(num, PADDING, CELL_SIZE / 2 + i * CELL_SIZE, FONT_SIZE, WHITE);
         }
 
         // Draw letters
@@ -87,7 +111,7 @@ int main()
         {
             char letter[2];
             snprintf(letter, sizeof(letter), "%c", 'A' + i);
-            DrawText(letter, BOARD_LABEL_WIDTH + CELL_SIZE / 2 + i * CELL_SIZE, SCREEN_HEIGHT - 2.3 * PADDING, 30, WHITE);
+            DrawText(letter, BOARD_LABEL_WIDTH + CELL_SIZE / 2 + i * CELL_SIZE, SCREEN_HEIGHT - 2.3 * PADDING, FONT_SIZE, WHITE);
         }
 
         // Draw pieces
@@ -95,7 +119,7 @@ int main()
         {
             for (int col = 0; col < 8; col++)
             {
-                if (game.board[row][col] == Empty)
+                if (game.board[row][col] == EMPTY)
                 {
                     continue;
                 }
@@ -125,33 +149,69 @@ int main()
         {
             int x = selectedSquare % 8;
             int y = selectedSquare / 8;
-            
-            move_list moves = get_valid_moves(&game, x, y);
 
-            for (int i = 0; i < moves.count; i++)
+            valid_moves = get_valid_moves(&game, x, y);
+
+            for (uint i = 0; i < valid_moves.count; i++)
             {
-                int circleX = BOARD_LABEL_WIDTH + (moves.moves[i].x_to * CELL_SIZE) + (CELL_SIZE / 2);
-                int circleY = moves.moves[i].y_to * CELL_SIZE + (CELL_SIZE / 2);
+                int circleX = BOARD_LABEL_WIDTH + (valid_moves.moves[i].x_to * CELL_SIZE) + (CELL_SIZE / 2);
+                int circleY = valid_moves.moves[i].y_to * CELL_SIZE + (CELL_SIZE / 2);
                 DrawCircle(circleX, circleY, CELL_SIZE / 8, HIGHLIGHT_COLOR);
             }
         }
 
-
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && game.status == InProgress)
         {
             Vector2 position = GetMousePosition();
 
             // Convert mouse position to board coordinates
-            int col = (position.x - BOARD_LABEL_WIDTH) / CELL_SIZE;
-            int row = position.y / CELL_SIZE;
-            piece_type piece = game.board[row][col];
+            int x_clicked = (position.x - BOARD_LABEL_WIDTH) / CELL_SIZE;
+            int y_clicked = position.y / CELL_SIZE;
+            piece_type clicked_piece = game.board[y_clicked][x_clicked];
+            piece_color piece_color = get_piece_color(clicked_piece);
 
-            // Check if click is within board bounds
-            if (col >= 0 && col < 8 && row >= 0 && row < 8)
+            if (is_within_bounds(x_clicked, y_clicked))
             {
-                if (piece != Empty)
+                if (clicked_piece != EMPTY && piece_color == game.current_turn)
                 {
-                    selectedSquare = row * 8 + col;
+                    printf("Selected Piece. Piece Color: %d\n", piece_color);
+                    selectedSquare = y_clicked * 8 + x_clicked;
+                }
+
+                // If already selected, check if player is trying to move/click a valid move
+                if (selectedSquare != -1)
+                {
+                    for (uint i = 0; i < valid_moves.count; i++)
+                    {
+                        if (valid_moves.moves[i].x_to == x_clicked && valid_moves.moves[i].y_to == y_clicked)
+                        {
+                            make_move(&game, valid_moves.moves[i]);
+                            if (clicked_piece != EMPTY)
+                            {
+                                PlaySound(captureSound);
+                            }
+                            else
+                            {
+                                PlaySound(moveSound);
+                            }
+
+                            selectedSquare = -1;
+
+                            game_status status = check_game_over(&game);
+                            if (status == WhiteWon)
+                            {
+                                game.status = WhiteWon;
+                                game_over_timer = GetTime();
+                                printf("White Won!\n");
+                            }
+                            else if (status == BlackWon)
+                            {
+                                game.status = BlackWon;
+                                game_over_timer = GetTime();
+                                printf("Black Won!\n");
+                            }
+                        }
+                    }
                 }
             }
             else
@@ -159,7 +219,34 @@ int main()
                 selectedSquare = -1; // Deselect if clicking outside the board
             }
 
-            printf("Piece on that square: %d\n", game.board[row][col]);
+            printf("Piece on that square: %d\n", game.board[y_clicked][x_clicked]);
+        }
+
+        // Draw game over message
+        if (game.status == WhiteWon || game.status == BlackWon)
+        {
+            if ((GetTime() - game_over_timer) * 1000 > GAME_OVER_TIME)
+            {
+                reset_game(&game);
+            }
+            else
+            {
+                const char *winner_text = (game.status == WhiteWon) ? "White Wins!" : "Black Wins!";
+                int messageFontSize = (int)(FONT_SIZE * 2.5f);
+                int textWidth = MeasureText(winner_text, messageFontSize);
+                int textHeight = messageFontSize;
+                int padding = 40;
+                int boxWidth = textWidth + padding * 2;
+                int boxHeight = textHeight + padding * 2;
+                int boxX = SCREEN_WIDTH / 2 - boxWidth / 2;
+                int boxY = SCREEN_HEIGHT / 2 - boxHeight / 2;
+
+                DrawRectangle(boxX, boxY, boxWidth, boxHeight, TEXT_BACKGROUND);
+
+                int textX = SCREEN_WIDTH / 2 - textWidth / 2;
+                int textY = SCREEN_HEIGHT / 2 - textHeight / 2;
+                DrawText(winner_text, textX, textY, messageFontSize, WHITE);
+            }
         }
 
         EndDrawing();
