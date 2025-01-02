@@ -79,8 +79,14 @@ move_list get_valid_moves(game *game, int x, int y);
 
 move_result make_move(game *game, move move);
 
+void undo_last_move(game *game);
+
 piece_color get_piece_color(piece_type piece);
 
 game_status check_game_over(game *game);
+
+bool import_FEN(game *game, const char *fen);
+
+void export_FEN(game *game, char *str_buffer);
 
 #endif

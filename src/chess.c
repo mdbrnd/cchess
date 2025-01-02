@@ -369,7 +369,7 @@ static move_list get_pseudo_legal_moves(game *game, int x, int y)
             if (!has_rook_moved(game, piece_color, true) &&
                 game->board[y][x + 1] == EMPTY &&
                 game->board[y][x + 2] == EMPTY &&
-                !is_in_check(game, piece_color) &&  // Current position not in check
+                !is_in_check(game, piece_color) &&                   // Current position not in check
                 !is_square_attacked(game, x + 1, y, !piece_color) && // Square king passes through
                 !is_square_attacked(game, x + 2, y, !piece_color))   // Final square not attacked
             {
@@ -381,7 +381,7 @@ static move_list get_pseudo_legal_moves(game *game, int x, int y)
                 game->board[y][x - 1] == EMPTY &&
                 game->board[y][x - 2] == EMPTY &&
                 game->board[y][x - 3] == EMPTY &&
-                !is_in_check(game, piece_color) &&  // Current position not in check
+                !is_in_check(game, piece_color) &&                   // Current position not in check
                 !is_square_attacked(game, x - 1, y, !piece_color) && // Square king passes through
                 !is_square_attacked(game, x - 2, y, !piece_color))   // Final square not attacked
             {
@@ -479,6 +479,27 @@ move_result make_move(game *game, move move)
     }
 
     return res;
+}
+
+void undo_last_move(game *game)
+{
+    if (game->move_history.count <= 0)
+    {
+        return;
+    }
+
+    move last_move = game->move_history.moves[game->move_history.count - 1];
+
+    game->board[last_move.y_from][last_move.x_from] = last_move.origin_piece;
+    game->board[last_move.y_to][last_move.x_to] = last_move.destination_piece;
+    if (game->current_turn == CChessBlack)
+    {
+        game->current_turn = CChessWhite;
+    }
+    else
+    {
+        game->current_turn = CChessBlack;
+    }
 }
 
 game_status check_game_over(game *game)
@@ -594,6 +615,7 @@ static bool is_square_attacked(game *game, int x, int y, piece_color attacker_co
             {
                 if (piece == BlackQueen || piece == WhiteQueen)
                 {
+                    // Diagonal attack check
                     if (abs(j - x) == abs(i - y))
                     {
                         int dx = (x - j) > 0 ? 1 : -1;
@@ -619,6 +641,7 @@ static bool is_square_attacked(game *game, int x, int y, piece_color attacker_co
                         }
                     }
 
+                    // Rank and file attack check
                     if (j == x || i == y)
                     {
                         bool path_clear = true;
@@ -686,8 +709,347 @@ static bool is_in_check(game *game, piece_color color)
                 break;
             }
         }
-        if (king_x != -1) break;
+        if (king_x != -1)
+            break;
     }
 
     return is_square_attacked(game, king_x, king_y, !color);
+}
+
+bool import_FEN(game *game, const char *fen)
+{
+    printf("Starting FEN import with: %s\n", fen);
+
+    // Reset the board first
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            game->board[i][j] = EMPTY;
+        }
+    }
+
+    int rank = 0; // Current rank (0-7)
+    int file = 0; // Current file (0-7)
+    int pos = 0;  // Position in FEN string
+
+    // 1. Parse piece placement
+    while (rank < 8)
+    {
+        char c = fen[pos++];
+        printf("Processing character '%c' at rank %d, file %d\n", c, rank, file);
+
+        if (c == '\0')
+        {
+            printf("Error: Unexpected end of string\n");
+            return false;
+        }
+
+        // Break the piece placement loop when we hit the first space
+        if (c == ' ')
+        {
+            if (rank == 7 && file == 8) // Make sure we completed the board
+            {
+                pos--; // Back up one character since we'll consume the space later
+                break;
+            }
+            printf("Error: Incomplete board at rank %d, file %d\n", rank, file);
+            return false;
+        }
+
+        if (c == '/')
+        {
+            if (file != 8)
+            {
+                printf("Error: Incomplete rank %d (file = %d)\n", rank, file);
+                return false;
+            }
+            rank++;
+            file = 0;
+        }
+        else if (c >= '1' && c <= '8')
+        {
+            int empty_squares = c - '0';
+            printf("Adding %d empty squares\n", empty_squares);
+            if (file + empty_squares > 8)
+            {
+                printf("Error: Too many squares in rank %d (file = %d, adding %d)\n", rank, file, empty_squares);
+                return false;
+            }
+            file += empty_squares;
+        }
+        else
+        {
+            if (file >= 8)
+            {
+                printf("Error: Too many squares in rank %d\n", rank);
+                return false;
+            }
+
+            piece_type piece;
+            switch (c)
+            {
+            case 'P':
+                piece = WhitePawn;
+                break;
+            case 'N':
+                piece = WhiteKnight;
+                break;
+            case 'B':
+                piece = WhiteBishop;
+                break;
+            case 'R':
+                piece = WhiteRook;
+                break;
+            case 'Q':
+                piece = WhiteQueen;
+                break;
+            case 'K':
+                piece = WhiteKing;
+                break;
+            case 'p':
+                piece = BlackPawn;
+                break;
+            case 'n':
+                piece = BlackKnight;
+                break;
+            case 'b':
+                piece = BlackBishop;
+                break;
+            case 'r':
+                piece = BlackRook;
+                break;
+            case 'q':
+                piece = BlackQueen;
+                break;
+            case 'k':
+                piece = BlackKing;
+                break;
+            default:
+                printf("Error: Invalid piece character '%c'\n", c);
+                return false;
+            }
+
+            printf("Placing piece %s at rank %d, file %d\n", piece_strings[piece], rank, file);
+            game->board[rank][file++] = piece;
+        }
+    }
+
+    if (fen[pos++] != ' ')
+    {
+        printf("Error: Expected space after piece placement\n");
+        return false;
+    }
+
+    // 2. Parse active color
+    char active_color = fen[pos++];
+    printf("Processing active color: %c\n", active_color);
+    if (active_color == 'w')
+    {
+        game->current_turn = CChessWhite;
+    }
+    else if (active_color == 'b')
+    {
+        game->current_turn = CChessBlack;
+    }
+    else
+    {
+        printf("Error: Invalid active color '%c'\n", active_color);
+        return false;
+    }
+
+    if (fen[pos++] != ' ')
+    {
+        printf("Error: Expected space after active color\n");
+        return false;
+    }
+
+    // 3. Skip castling availability (for now)
+    while (fen[pos] != ' ')
+    {
+        if (fen[pos] == '\0')
+        {
+            printf("Error: Expected space after castling availability\n");
+            return false;
+        }
+        pos++;
+    }
+    pos++; // Skip the space
+
+    // 4. Skip en passant target square (for now)
+    while (fen[pos] != ' ')
+    {
+        if (fen[pos] == '\0')
+        {
+            printf("Error: Expected space after en passant target square\n");
+            return false;
+        }
+        pos++;
+    }
+    pos++; // Skip the space
+
+    // 5. Skip halfmove clock (for now)
+    while (fen[pos] != ' ')
+    {
+        if (fen[pos] == '\0')
+        {
+            printf("Error: Expected space after halfmove clock\n");
+            return false;
+        }
+        pos++;
+    }
+    pos++; // Skip the space
+
+    // 6. Skip fullmove number (for now)
+    while (fen[pos] != '\0' && fen[pos] != ' ')
+    {
+        pos++;
+    }
+
+    // Reset move history since we're loading a new position
+    game->move_history = (move_list){.moves = {}, .count = 0};
+    game->status = InProgress;
+
+    printf("FEN import completed successfully\n");
+    return true;
+}
+
+void export_FEN(game *game, char *str_buffer)
+{
+    int empty_count = 0;
+    int buffer_pos = 0;
+
+    // 1. Piece placement
+    for (int rank = 0; rank < 8; rank++)
+    {
+        for (int file = 0; file < 8; file++)
+        {
+            piece_type piece = game->board[rank][file];
+
+            if (piece == EMPTY)
+            {
+                empty_count++;
+            }
+            else
+            {
+                if (empty_count > 0)
+                {
+                    str_buffer[buffer_pos++] = '0' + empty_count;
+                    empty_count = 0;
+                }
+
+                char piece_char;
+                switch (piece)
+                {
+                case WhitePawn:
+                    piece_char = 'P';
+                    break;
+                case WhiteKnight:
+                    piece_char = 'N';
+                    break;
+                case WhiteBishop:
+                    piece_char = 'B';
+                    break;
+                case WhiteRook:
+                    piece_char = 'R';
+                    break;
+                case WhiteQueen:
+                    piece_char = 'Q';
+                    break;
+                case WhiteKing:
+                    piece_char = 'K';
+                    break;
+                case BlackPawn:
+                    piece_char = 'p';
+                    break;
+                case BlackKnight:
+                    piece_char = 'n';
+                    break;
+                case BlackBishop:
+                    piece_char = 'b';
+                    break;
+                case BlackRook:
+                    piece_char = 'r';
+                    break;
+                case BlackQueen:
+                    piece_char = 'q';
+                    break;
+                case BlackKing:
+                    piece_char = 'k';
+                    break;
+                default:
+                    piece_char = '?';
+                    break;
+                }
+                str_buffer[buffer_pos++] = piece_char;
+            }
+        }
+
+        if (empty_count > 0)
+        {
+            str_buffer[buffer_pos++] = '0' + empty_count;
+            empty_count = 0;
+        }
+
+        if (rank < 7)
+        {
+            str_buffer[buffer_pos++] = '/';
+        }
+    }
+
+    // 2. Active color
+    str_buffer[buffer_pos++] = ' ';
+    str_buffer[buffer_pos++] = (game->current_turn == CChessWhite) ? 'w' : 'b';
+
+    // 3. Castling availability
+    str_buffer[buffer_pos++] = ' ';
+    bool has_castling = false;
+
+    if (!has_king_moved(game, CChessWhite))
+    {
+        if (!has_rook_moved(game, CChessWhite, true))
+        {
+            str_buffer[buffer_pos++] = 'K';
+            has_castling = true;
+        }
+        if (!has_rook_moved(game, CChessWhite, false))
+        {
+            str_buffer[buffer_pos++] = 'Q';
+            has_castling = true;
+        }
+    }
+
+    if (!has_king_moved(game, CChessBlack))
+    {
+        if (!has_rook_moved(game, CChessBlack, true))
+        {
+            str_buffer[buffer_pos++] = 'k';
+            has_castling = true;
+        }
+        if (!has_rook_moved(game, CChessBlack, false))
+        {
+            str_buffer[buffer_pos++] = 'q';
+            has_castling = true;
+        }
+    }
+
+    if (!has_castling)
+    {
+        str_buffer[buffer_pos++] = '-';
+    }
+
+    // 4. En passant target square (simplified - always '-' for now)
+    str_buffer[buffer_pos++] = ' ';
+    str_buffer[buffer_pos++] = '-';
+
+    // 5. Halfmove clock (always 0 for now)
+    str_buffer[buffer_pos++] = ' ';
+    str_buffer[buffer_pos++] = '0';
+
+    // 6. Fullmove number (always 1 for now)
+    str_buffer[buffer_pos++] = ' ';
+    str_buffer[buffer_pos++] = '1';
+
+    // Null terminate the string
+    str_buffer[buffer_pos] = '\0';
 }
