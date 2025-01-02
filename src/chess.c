@@ -1,8 +1,12 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include "chess.h"
 
 static bool has_king_moved(game *game, piece_color color);
 static bool has_rook_moved(game *game, piece_color color, bool kingside);
+static bool is_square_attacked(game *game, int x, int y, piece_color attacker_color);
+static bool is_in_check(game *game, piece_color color);
+static move_list get_pseudo_legal_moves(game *game, int x, int y);
 
 const char *piece_strings[] = {
     "empty",
@@ -125,9 +129,35 @@ bool is_within_bounds(int x, int y)
     return false;
 }
 
-// TODO: check_checkmate()
 // TODO: FEN stuff
 move_list get_valid_moves(game *game, int x, int y)
+{
+    move_list pseudo_moves = get_pseudo_legal_moves(game, x, y);
+    move_list legal_moves = {.moves = {}, .count = 0};
+    piece_color piece_color = get_piece_color(game->board[y][x]);
+
+    for (uint i = 0; i < pseudo_moves.count; i++)
+    {
+        move m = pseudo_moves.moves[i];
+
+        piece_type temp_dest = game->board[m.y_to][m.x_to];
+        piece_type temp_orig = game->board[m.y_from][m.x_from];
+        game->board[m.y_to][m.x_to] = temp_orig;
+        game->board[m.y_from][m.x_from] = EMPTY;
+
+        if (!is_in_check(game, piece_color))
+        {
+            legal_moves.moves[legal_moves.count++] = m;
+        }
+
+        game->board[m.y_from][m.x_from] = temp_orig;
+        game->board[m.y_to][m.x_to] = temp_dest;
+    }
+
+    return legal_moves;
+}
+
+static move_list get_pseudo_legal_moves(game *game, int x, int y)
 {
     move_list m = {.moves = {}, .count = 0};
     piece_type moving_piece = game->board[y][x];
@@ -338,7 +368,10 @@ move_list get_valid_moves(game *game, int x, int y)
             // Kingside castling
             if (!has_rook_moved(game, piece_color, true) &&
                 game->board[y][x + 1] == EMPTY &&
-                game->board[y][x + 2] == EMPTY)
+                game->board[y][x + 2] == EMPTY &&
+                !is_in_check(game, piece_color) &&  // Current position not in check
+                !is_square_attacked(game, x + 1, y, !piece_color) && // Square king passes through
+                !is_square_attacked(game, x + 2, y, !piece_color))   // Final square not attacked
             {
                 m.moves[m.count++] = (move){x, y, x + 2, y, EMPTY, EMPTY};
             }
@@ -347,7 +380,10 @@ move_list get_valid_moves(game *game, int x, int y)
             if (!has_rook_moved(game, piece_color, false) &&
                 game->board[y][x - 1] == EMPTY &&
                 game->board[y][x - 2] == EMPTY &&
-                game->board[y][x - 3] == EMPTY)
+                game->board[y][x - 3] == EMPTY &&
+                !is_in_check(game, piece_color) &&  // Current position not in check
+                !is_square_attacked(game, x - 1, y, !piece_color) && // Square king passes through
+                !is_square_attacked(game, x - 2, y, !piece_color))   // Final square not attacked
             {
                 m.moves[m.count++] = (move){x, y, x - 2, y, EMPTY, EMPTY};
             }
@@ -475,6 +511,37 @@ game_status check_game_over(game *game)
         return BlackWon;
     }
 
+    // Check for checkmate or stalemate
+    bool has_legal_moves = false;
+    piece_color current_color = game->current_turn;
+
+    // Try to find at least one legal move
+    for (int i = 0; i < 8 && !has_legal_moves; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            if (game->board[i][j] != EMPTY &&
+                get_piece_color(game->board[i][j]) == current_color)
+            {
+                move_list moves = get_valid_moves(game, j, i);
+                if (moves.count > 0)
+                {
+                    has_legal_moves = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!has_legal_moves)
+    {
+        if (is_in_check(game, current_color))
+        {
+            return (current_color == CChessWhite) ? BlackWon : WhiteWon;
+        }
+        return Stalemate;
+    }
+
     return InProgress;
 }
 
@@ -514,4 +581,113 @@ static bool has_rook_moved(game *game, piece_color color, bool kingside)
         }
     }
     return false;
+}
+
+static bool is_square_attacked(game *game, int x, int y, piece_color attacker_color)
+{
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            piece_type piece = game->board[i][j];
+            if (piece != EMPTY && get_piece_color(piece) == attacker_color)
+            {
+                if (piece == BlackQueen || piece == WhiteQueen)
+                {
+                    if (abs(j - x) == abs(i - y))
+                    {
+                        int dx = (x - j) > 0 ? 1 : -1;
+                        int dy = (y - i) > 0 ? 1 : -1;
+                        bool path_clear = true;
+
+                        int check_x = j + dx;
+                        int check_y = i + dy;
+                        while (check_x != x && check_y != y)
+                        {
+                            if (game->board[check_y][check_x] != EMPTY)
+                            {
+                                path_clear = false;
+                                break;
+                            }
+                            check_x += dx;
+                            check_y += dy;
+                        }
+
+                        if (path_clear)
+                        {
+                            return true;
+                        }
+                    }
+
+                    if (j == x || i == y)
+                    {
+                        bool path_clear = true;
+                        if (j == x) // Same file
+                        {
+                            int dy = (y - i) > 0 ? 1 : -1;
+                            for (int check_y = i + dy; check_y != y; check_y += dy)
+                            {
+                                if (game->board[check_y][x] != EMPTY)
+                                {
+                                    path_clear = false;
+                                    break;
+                                }
+                            }
+                        }
+                        else // Same rank
+                        {
+                            int dx = (x - j) > 0 ? 1 : -1;
+                            for (int check_x = j + dx; check_x != x; check_x += dx)
+                            {
+                                if (game->board[y][check_x] != EMPTY)
+                                {
+                                    path_clear = false;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (path_clear)
+                        {
+                            return true;
+                        }
+                    }
+                }
+                else
+                {
+                    move_list moves = get_pseudo_legal_moves(game, j, i);
+                    for (uint k = 0; k < moves.count; k++)
+                    {
+                        if (moves.moves[k].x_to == x && moves.moves[k].y_to == y)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+static bool is_in_check(game *game, piece_color color)
+{
+    int king_x = -1, king_y = -1;
+    piece_type king = (color == CChessWhite) ? WhiteKing : BlackKing;
+
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            if (game->board[i][j] == king)
+            {
+                king_y = i;
+                king_x = j;
+                break;
+            }
+        }
+        if (king_x != -1) break;
+    }
+
+    return is_square_attacked(game, king_x, king_y, !color);
 }

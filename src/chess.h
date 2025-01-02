@@ -32,7 +32,8 @@ typedef enum
 {
     InProgress,
     WhiteWon,
-    BlackWon
+    BlackWon,
+    Stalemate
 } game_status;
 
 extern const char *piece_strings[];

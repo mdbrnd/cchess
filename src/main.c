@@ -54,6 +54,11 @@ int main()
         {
             SetWindowTitle("Chess - Black Won!");
         }
+        else if (game.status == Stalemate)
+        {
+            SetWindowTitle("Chess - Draw!");
+        }
+
         else if (game.current_turn == CChessWhite)
         {
             SetWindowTitle("Chess - White's Turn");
@@ -163,24 +168,15 @@ int main()
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && game.status == InProgress)
         {
             Vector2 position = GetMousePosition();
-
-            // Convert mouse position to board coordinates
             int x_clicked = (position.x - BOARD_LABEL_WIDTH) / CELL_SIZE;
             int y_clicked = position.y / CELL_SIZE;
-            piece_type clicked_piece = game.board[y_clicked][x_clicked];
-            piece_color piece_color = get_piece_color(clicked_piece);
 
             if (is_within_bounds(x_clicked, y_clicked))
             {
-                if (clicked_piece != EMPTY && piece_color == game.current_turn)
-                {
-                    printf("Selected Piece. Piece Color: %d\n", piece_color);
-                    selectedSquare = y_clicked * 8 + x_clicked;
-                }
-
-                // If already selected, check if player is trying to move/click a valid move
+                // First check if we're trying to complete a move
                 if (selectedSquare != -1)
                 {
+                    bool move_made = false;
                     for (uint i = 0; i < valid_moves.count; i++)
                     {
                         if (valid_moves.moves[i].x_to == x_clicked && valid_moves.moves[i].y_to == y_clicked)
@@ -200,6 +196,7 @@ int main()
                             }
 
                             selectedSquare = -1;
+                            move_made = true;
 
                             game_status status = check_game_over(&game);
                             if (status == WhiteWon)
@@ -214,7 +211,36 @@ int main()
                                 game_over_timer = GetTime();
                                 printf("Black Won!\n");
                             }
+                            break;
                         }
+                    }
+
+                    // If no move was made, try selecting new piece
+                    if (!move_made)
+                    {
+                        piece_type clicked_piece = game.board[y_clicked][x_clicked];
+                        piece_color piece_color = get_piece_color(clicked_piece);
+
+                        if (clicked_piece != EMPTY && piece_color == game.current_turn)
+                        {
+                            printf("Selected Piece. Piece Color: %d\n", piece_color);
+                            selectedSquare = y_clicked * 8 + x_clicked;
+                        }
+                        else
+                        {
+                            selectedSquare = -1; // Deselect if clicking invalid square
+                        }
+                    }
+                }
+                else // No piece selected, try selecting one
+                {
+                    piece_type clicked_piece = game.board[y_clicked][x_clicked];
+                    piece_color piece_color = get_piece_color(clicked_piece);
+
+                    if (clicked_piece != EMPTY && piece_color == game.current_turn)
+                    {
+                        printf("Selected Piece. Piece Color: %d\n", piece_color);
+                        selectedSquare = y_clicked * 8 + x_clicked;
                     }
                 }
             }
@@ -235,7 +261,16 @@ int main()
             }
             else
             {
-                const char *winner_text = (game.status == WhiteWon) ? "White Wins!" : "Black Wins!";
+                const char *winner_text = "White Wins!";
+                if (game.status == BlackWon)
+                {
+                    winner_text = "Black Wins!";
+                }
+                else if (game.status == Stalemate)
+                {
+                    winner_text = "Draw!";
+                }
+
                 int messageFontSize = (int)(FONT_SIZE * 2.5f);
                 int textWidth = MeasureText(winner_text, messageFontSize);
                 int textHeight = messageFontSize;
