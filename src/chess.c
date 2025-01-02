@@ -1,6 +1,9 @@
 #include <stdlib.h>
 #include "chess.h"
 
+static bool has_king_moved(game *game, piece_color color);
+static bool has_rook_moved(game *game, piece_color color, bool kingside);
+
 const char *piece_strings[] = {
     "empty",
     "black_pawn",
@@ -122,8 +125,6 @@ bool is_within_bounds(int x, int y)
     return false;
 }
 
-// TODO: castling
-// TODO: en passant
 // TODO: check_checkmate()
 // TODO: FEN stuff
 move_list get_valid_moves(game *game, int x, int y)
@@ -149,12 +150,32 @@ move_list get_valid_moves(game *game, int x, int y)
         // Forward one square
         if (is_within_bounds(x, y + direction) && game->board[y + direction][x] == EMPTY)
         {
-            m.moves[m.count++] = (move){x, y, x, y + direction};
+            m.moves[m.count++] = (move){x, y, x, y + direction, EMPTY, EMPTY}; // Get filled in at the bottom anyway, 2x EMPTY to supress compiler warnings
 
             // Initial two-square move
             if (y == start_row && game->board[y + 2 * direction][x] == EMPTY)
             {
-                m.moves[m.count++] = (move){x, y, x, y + 2 * direction};
+                m.moves[m.count++] = (move){x, y, x, y + 2 * direction, EMPTY, EMPTY};
+            }
+        }
+
+        // En passant
+        if ((moving_piece == WhitePawn && y == 3) || (moving_piece == BlackPawn && y == 4))
+        {
+            move last = game->move_history.moves[game->move_history.count - 1];
+            piece_type last_piece = last.origin_piece;
+
+            // Check if last move was opponent's pawn moving two squares
+            if ((last_piece == BlackPawn || last_piece == WhitePawn) &&
+                abs(last.y_to - last.y_from) == 2 &&
+                last.y_to == y &&
+                abs(last.x_to - x) == 1)
+            {
+                // Add en passant capture
+                m.moves[m.count++] = (move){
+                    x, y,                     // from
+                    last.x_to, y + direction, // to
+                    EMPTY, EMPTY};
             }
         }
 
@@ -166,7 +187,7 @@ move_list get_valid_moves(game *game, int x, int y)
                 piece_type target = game->board[y + direction][x + dx];
                 if (target != EMPTY && piece_color != get_piece_color(target))
                 {
-                    m.moves[m.count++] = (move){x, y, x + dx, y + direction};
+                    m.moves[m.count++] = (move){x, y, x + dx, y + direction, EMPTY, EMPTY};
                 }
             }
         }
@@ -187,11 +208,11 @@ move_list get_valid_moves(game *game, int x, int y)
                 piece_type target = game->board[new_y][new_x];
                 if (target == EMPTY)
                 {
-                    m.moves[m.count++] = (move){x, y, new_x, new_y};
+                    m.moves[m.count++] = (move){x, y, new_x, new_y, EMPTY, EMPTY};
                 }
                 else if (piece_color != get_piece_color(target))
                 {
-                    m.moves[m.count++] = (move){x, y, new_x, new_y};
+                    m.moves[m.count++] = (move){x, y, new_x, new_y, EMPTY, EMPTY};
                     break;
                 }
                 else
@@ -219,7 +240,7 @@ move_list get_valid_moves(game *game, int x, int y)
                 piece_type target = game->board[new_y][new_x];
                 if (target == EMPTY || piece_color != get_piece_color(target))
                 {
-                    m.moves[m.count++] = (move){x, y, new_x, new_y};
+                    m.moves[m.count++] = (move){x, y, new_x, new_y, EMPTY, EMPTY};
                 }
             }
         }
@@ -240,11 +261,11 @@ move_list get_valid_moves(game *game, int x, int y)
                 piece_type target = game->board[new_y][new_x];
                 if (target == EMPTY)
                 {
-                    m.moves[m.count++] = (move){x, y, new_x, new_y};
+                    m.moves[m.count++] = (move){x, y, new_x, new_y, EMPTY, EMPTY};
                 }
                 else if (piece_color != get_piece_color(target))
                 {
-                    m.moves[m.count++] = (move){x, y, new_x, new_y};
+                    m.moves[m.count++] = (move){x, y, new_x, new_y, EMPTY, EMPTY};
                     break;
                 }
                 else
@@ -272,11 +293,11 @@ move_list get_valid_moves(game *game, int x, int y)
                 piece_type target = game->board[new_y][new_x];
                 if (target == EMPTY)
                 {
-                    m.moves[m.count++] = (move){x, y, new_x, new_y};
+                    m.moves[m.count++] = (move){x, y, new_x, new_y, EMPTY, EMPTY};
                 }
                 else if (piece_color != get_piece_color(target))
                 {
-                    m.moves[m.count++] = (move){x, y, new_x, new_y};
+                    m.moves[m.count++] = (move){x, y, new_x, new_y, EMPTY, EMPTY};
                     break;
                 }
                 else
@@ -294,6 +315,8 @@ move_list get_valid_moves(game *game, int x, int y)
     case BlackKing:
     {
         int directions[8][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+
+        // Normal king moves
         for (int d = 0; d < 8; d++)
         {
             int new_x = x + directions[d][0];
@@ -304,8 +327,29 @@ move_list get_valid_moves(game *game, int x, int y)
                 piece_type target = game->board[new_y][new_x];
                 if (target == EMPTY || piece_color != get_piece_color(target))
                 {
-                    m.moves[m.count++] = (move){x, y, new_x, new_y};
+                    m.moves[m.count++] = (move){x, y, new_x, new_y, EMPTY, EMPTY};
                 }
+            }
+        }
+
+        // Castling
+        if (!has_king_moved(game, piece_color))
+        {
+            // Kingside castling
+            if (!has_rook_moved(game, piece_color, true) &&
+                game->board[y][x + 1] == EMPTY &&
+                game->board[y][x + 2] == EMPTY)
+            {
+                m.moves[m.count++] = (move){x, y, x + 2, y, EMPTY, EMPTY};
+            }
+
+            // Queenside castling
+            if (!has_rook_moved(game, piece_color, false) &&
+                game->board[y][x - 1] == EMPTY &&
+                game->board[y][x - 2] == EMPTY &&
+                game->board[y][x - 3] == EMPTY)
+            {
+                m.moves[m.count++] = (move){x, y, x - 2, y, EMPTY, EMPTY};
             }
         }
     }
@@ -334,11 +378,59 @@ piece_color get_piece_color(piece_type piece)
     return CChessWhite;
 }
 
-void make_move(game *game, move move)
+move_result make_move(game *game, move move)
 {
     // TODO: handle overflow/wrap around
     game->move_history.moves[game->move_history.count] = move;
     game->move_history.count++;
+
+    move_result res = None;
+
+    piece_type moving_piece = game->board[move.y_from][move.x_from];
+
+    // En passant
+    if ((moving_piece == WhitePawn || moving_piece == BlackPawn) &&
+        move.x_from != move.x_to &&                         // Diagonal move
+        game->board[move.y_to][move.x_to] == EMPTY &&       // Moving to empty square
+        ((moving_piece == WhitePawn && move.y_from == 3) || // White pawn on rank 5
+         (moving_piece == BlackPawn && move.y_from == 4)))  // Black pawn on rank 4
+    {
+        // Remove the captured pawn
+        game->board[move.y_from][move.x_to] = EMPTY;
+
+        res = PieceCaptured;
+    }
+
+    game->board[move.y_from][move.x_from] = EMPTY;
+
+    piece_type destination_piece = game->board[move.y_to][move.x_to];
+    if (destination_piece != EMPTY)
+    {
+        res = PieceCaptured;
+    }
+
+    game->board[move.y_to][move.x_to] = moving_piece;
+
+    // Handle castling
+    if ((moving_piece == WhiteKing || moving_piece == BlackKing) &&
+        abs(move.x_to - move.x_from) == 2)
+    {
+        int rook_row = (moving_piece == WhiteKing) ? 7 : 0;
+        // Kingside castling
+        if (move.x_to > move.x_from)
+        {
+            game->board[rook_row][7] = EMPTY;
+            game->board[rook_row][5] = (moving_piece == WhiteKing) ? WhiteRook : BlackRook;
+        }
+        // Queenside castling
+        else
+        {
+            game->board[rook_row][0] = EMPTY;
+            game->board[rook_row][3] = (moving_piece == WhiteKing) ? WhiteRook : BlackRook;
+        }
+
+        res = Castle;
+    }
 
     // Flip turn
     if (game->current_turn == CChessWhite)
@@ -350,10 +442,7 @@ void make_move(game *game, move move)
         game->current_turn = CChessWhite;
     }
 
-    piece_type moving_piece = game->board[move.y_from][move.x_from];
-    game->board[move.y_from][move.x_from] = EMPTY;
-
-    game->board[move.y_to][move.x_to] = moving_piece;
+    return res;
 }
 
 game_status check_game_over(game *game)
@@ -387,4 +476,42 @@ game_status check_game_over(game *game)
     }
 
     return InProgress;
+}
+
+static bool has_king_moved(game *game, piece_color color)
+{
+    piece_type king = (color == CChessWhite) ? WhiteKing : BlackKing;
+    int start_x = 4;
+    int start_y = (color == CChessWhite) ? 7 : 0;
+
+    for (uint i = 0; i < game->move_history.count; i++)
+    {
+        move m = game->move_history.moves[i];
+        if (m.origin_piece == king &&
+            m.x_from == start_x &&
+            m.y_from == start_y)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool has_rook_moved(game *game, piece_color color, bool kingside)
+{
+    piece_type rook = (color == CChessWhite) ? WhiteRook : BlackRook;
+    int start_x = kingside ? 7 : 0;
+    int start_y = (color == CChessWhite) ? 7 : 0;
+
+    for (uint i = 0; i < game->move_history.count; i++)
+    {
+        move m = game->move_history.moves[i];
+        if (m.origin_piece == rook &&
+            m.x_from == start_x &&
+            m.y_from == start_y)
+        {
+            return true;
+        }
+    }
+    return false;
 }

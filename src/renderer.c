@@ -16,4 +16,3 @@ Texture2D get_piece_texture(piece_type piece)
 
     return texture; // We don't have to use buffers and can just return it since the texture is stored on the GPU and not the stack
 }
-

@@ -53,6 +53,13 @@ typedef struct
     uint count;
 } move_list;
 
+typedef enum
+{
+    None,
+    PieceCaptured,
+    Castle
+} move_result;
+
 typedef struct
 {
     piece_type board[8][8];
@@ -69,7 +76,7 @@ bool is_within_bounds(int x, int y);
 
 move_list get_valid_moves(game *game, int x, int y);
 
-void make_move(game *game, move move);
+move_result make_move(game *game, move move);
 
 piece_color get_piece_color(piece_type piece);
 

@@ -185,14 +185,18 @@ int main()
                     {
                         if (valid_moves.moves[i].x_to == x_clicked && valid_moves.moves[i].y_to == y_clicked)
                         {
-                            make_move(&game, valid_moves.moves[i]);
-                            if (clicked_piece != EMPTY)
+                            move_result result = make_move(&game, valid_moves.moves[i]);
+                            if (result == None)
+                            {
+                                PlaySound(moveSound);
+                            }
+                            else if (result == PieceCaptured)
                             {
                                 PlaySound(captureSound);
                             }
-                            else
+                            else if (result == Castle)
                             {
-                                PlaySound(moveSound);
+                                PlaySound(castleSound);
                             }
 
                             selectedSquare = -1;
