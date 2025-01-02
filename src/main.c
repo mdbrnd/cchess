@@ -11,7 +11,7 @@ Texture2D get_piece_texture(piece_type piece);
 
 int main()
 {
-    const int CELL_SIZE = 160;
+    const int CELL_SIZE = 100;
     const int BOARD_LABEL_WIDTH = 50; // Area where numbers and letters are (1-8, A-H)
     const int PADDING = BOARD_LABEL_WIDTH / 3;
     const int FONT_SIZE = CELL_SIZE / 5;
