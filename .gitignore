@@ -1,9 +1,9 @@
-# Executables
 *.exe
 *.out
 chess
 chess.exe
 
-# Build directory
 build/
 chess.dSYM/
+cchess.zip
+cchess.tar.gz
