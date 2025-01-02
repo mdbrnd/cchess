@@ -18,7 +18,7 @@ else
         LDFLAGS = -L lib/linux
         LIBS = -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
     endif
-    ifeq ($(UNAME_S),Darwin)                        
+    ifeq ($(UNAME_S),Darwin)
         PLATFORM = macOS
         CC = clang
         EXT =
