@@ -5,7 +5,7 @@ ifeq ($(OS),Windows_NT)
     EXT = .exe
     CFLAGS = -g -O2 -Wall -Wextra
     INCLUDES = -I include/
-    LDFLAGS = -L lib/
+    LDFLAGS = -L lib/windows
     LIBS = -lraylib -lopengl32 -lgdi32 -lwinmm
 else
     UNAME_S := $(shell uname -s)
@@ -15,7 +15,7 @@ else
         EXT =
         CFLAGS = -g -O2 -Wall -Wextra
         INCLUDES = -I include/
-        LDFLAGS = -L lib/
+        LDFLAGS = -L lib/linux
         LIBS = -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
     endif
     ifeq ($(UNAME_S),Darwin)
@@ -24,7 +24,7 @@ else
         EXT =
         CFLAGS = -g -O2 -Wall -Wextra
         INCLUDES = -I include/
-        LDFLAGS = -L lib/
+        LDFLAGS = -L lib/macos
         LIBS = -lraylib -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
     endif
 endif

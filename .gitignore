@@ -6,3 +6,4 @@ chess.exe
 
 # Build directory
 build/
+chess.dSYM/
