@@ -33,7 +33,7 @@ endif
 TARGET = chess$(EXT)
 
 # Source files
-SRC = src/main.c src/renderer.c src/chess.c
+SRC = src/main.c src/chess.c
 
 # Default target
 all: $(TARGET)
