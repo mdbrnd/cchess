@@ -129,7 +129,6 @@ bool is_within_bounds(int x, int y)
     return false;
 }
 
-// TODO: FEN stuff
 move_list get_valid_moves(game *game, int x, int y)
 {
     move_list pseudo_moves = get_pseudo_legal_moves(game, x, y);
@@ -163,8 +162,8 @@ static move_list get_pseudo_legal_moves(game *game, int x, int y)
     piece_type moving_piece = game->board[y][x];
     piece_color piece_color = get_piece_color(moving_piece);
 
-    // Don't return moves for empty squares or pieces of wrong color
-    if (moving_piece == EMPTY || piece_color != game->current_turn)
+    // Don't return moves for empty squares
+    if (moving_piece == EMPTY)
     {
         return m;
     }
@@ -192,20 +191,23 @@ static move_list get_pseudo_legal_moves(game *game, int x, int y)
         // En passant
         if ((moving_piece == WhitePawn && y == 3) || (moving_piece == BlackPawn && y == 4))
         {
-            move last = game->move_history.moves[game->move_history.count - 1];
-            piece_type last_piece = last.origin_piece;
-
-            // Check if last move was opponent's pawn moving two squares
-            if ((last_piece == BlackPawn || last_piece == WhitePawn) &&
-                abs(last.y_to - last.y_from) == 2 &&
-                last.y_to == y &&
-                abs(last.x_to - x) == 1)
+            if (game->move_history.count > 0)
             {
-                // Add en passant capture
-                m.moves[m.count++] = (move){
-                    x, y,                     // from
-                    last.x_to, y + direction, // to
-                    EMPTY, EMPTY};
+                move last = game->move_history.moves[game->move_history.count - 1];
+                piece_type last_piece = last.origin_piece;
+
+                // Check if last move was opponent's pawn moving two squares
+                if ((last_piece == BlackPawn || last_piece == WhitePawn) &&
+                    abs(last.y_to - last.y_from) == 2 &&
+                    last.y_to == y &&
+                    abs(last.x_to - x) == 1)
+                {
+                    // Add en passant capture
+                    m.moves[m.count++] = (move){
+                        x, y,                     // from
+                        last.x_to, y + direction, // to
+                        EMPTY, EMPTY};
+                }
             }
         }
 
@@ -416,7 +418,12 @@ piece_color get_piece_color(piece_type piece)
 
 move_result make_move(game *game, move move)
 {
-    // TODO: handle overflow/wrap around
+    if (game->move_history.count >= MAX_MOVES)
+    {
+        // Could also keep track of start and loop around, but would require checking and rewriting most existing functions. With MAX_MOVES being 1024, it will almost never be reached in a single game
+        game->move_history = (move_list){.moves = {}, .count = 0};
+    }
+
     game->move_history.moves[game->move_history.count] = move;
     game->move_history.count++;
 
@@ -489,6 +496,7 @@ void undo_last_move(game *game)
     }
 
     move last_move = game->move_history.moves[game->move_history.count - 1];
+    game->move_history.count--;
 
     game->board[last_move.y_from][last_move.x_from] = last_move.origin_piece;
     game->board[last_move.y_to][last_move.x_to] = last_move.destination_piece;
@@ -613,78 +621,12 @@ static bool is_square_attacked(game *game, int x, int y, piece_color attacker_co
             piece_type piece = game->board[i][j];
             if (piece != EMPTY && get_piece_color(piece) == attacker_color)
             {
-                if (piece == BlackQueen || piece == WhiteQueen)
+                move_list moves = get_pseudo_legal_moves(game, j, i);
+                for (uint k = 0; k < moves.count; k++)
                 {
-                    // Diagonal attack check
-                    if (abs(j - x) == abs(i - y))
+                    if (moves.moves[k].x_to == x && moves.moves[k].y_to == y)
                     {
-                        int dx = (x - j) > 0 ? 1 : -1;
-                        int dy = (y - i) > 0 ? 1 : -1;
-                        bool path_clear = true;
-
-                        int check_x = j + dx;
-                        int check_y = i + dy;
-                        while (check_x != x && check_y != y)
-                        {
-                            if (game->board[check_y][check_x] != EMPTY)
-                            {
-                                path_clear = false;
-                                break;
-                            }
-                            check_x += dx;
-                            check_y += dy;
-                        }
-
-                        if (path_clear)
-                        {
-                            return true;
-                        }
-                    }
-
-                    // Rank and file attack check
-                    if (j == x || i == y)
-                    {
-                        bool path_clear = true;
-                        if (j == x) // Same file
-                        {
-                            int dy = (y - i) > 0 ? 1 : -1;
-                            for (int check_y = i + dy; check_y != y; check_y += dy)
-                            {
-                                if (game->board[check_y][x] != EMPTY)
-                                {
-                                    path_clear = false;
-                                    break;
-                                }
-                            }
-                        }
-                        else // Same rank
-                        {
-                            int dx = (x - j) > 0 ? 1 : -1;
-                            for (int check_x = j + dx; check_x != x; check_x += dx)
-                            {
-                                if (game->board[y][check_x] != EMPTY)
-                                {
-                                    path_clear = false;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (path_clear)
-                        {
-                            return true;
-                        }
-                    }
-                }
-                else
-                {
-                    move_list moves = get_pseudo_legal_moves(game, j, i);
-                    for (uint k = 0; k < moves.count; k++)
-                    {
-                        if (moves.moves[k].x_to == x && moves.moves[k].y_to == y)
-                        {
-                            return true;
-                        }
+                        return true;
                     }
                 }
             }

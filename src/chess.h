@@ -1,6 +1,8 @@
 #ifndef CHESS_H
 #define CHESS_H
 
+#define MAX_MOVES 1024
+
 #include <stdbool.h>
 
 typedef unsigned int uint;
@@ -50,7 +52,7 @@ typedef struct
 
 typedef struct
 {
-    move moves[256];
+    move moves[MAX_MOVES];
     uint count;
 } move_list;
 
