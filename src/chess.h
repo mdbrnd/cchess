@@ -60,7 +60,8 @@ typedef enum
 {
     None,
     PieceCaptured,
-    Castle
+    Castle,
+    Promotion
 } move_result;
 
 typedef struct

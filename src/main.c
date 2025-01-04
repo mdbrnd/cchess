@@ -9,28 +9,28 @@
 void get_piece_path(piece_type piece, char *path, size_t size);
 Texture2D get_piece_texture(piece_type piece);
 
+const int CELL_SIZE = 110;
+const int BOARD_LABEL_WIDTH = 50; // Area where numbers and letters are (1-8, A-H)
+const int PADDING = BOARD_LABEL_WIDTH / 3;
+const int FONT_SIZE = CELL_SIZE / 5;
+const int GAME_OVER_TIME = 3000;
+const int MENU_BAR_HEIGHT = 60;
+const int SCREEN_WIDTH = CELL_SIZE * 8 + BOARD_LABEL_WIDTH;
+const int SCREEN_HEIGHT = MENU_BAR_HEIGHT + CELL_SIZE * 8 + BOARD_LABEL_WIDTH;
+const int BUTTON_HEIGHT = 60;
+const int BUTTON_WIDTH = SCREEN_WIDTH / 4;
+const int ICON_BUTTON_HEIGHT = 60;
+const int ICON_BUTTON_WIDTH = SCREEN_WIDTH / 4 + 5;
+const int NOTIFICATION_DURATION = 2000; // Duration in milliseconds
+
+const Color CELL_COLOR_1 = {150, 77, 34, 255};
+const Color CELL_COLOR_2 = {238, 220, 151, 255};
+const Color SIDEBAR_COLOR = {21, 10, 4, 255};
+const Color HIGHLIGHT_COLOR = {255, 255, 0, 200};
+const Color TEXT_BACKGROUND = {0, 0, 0, 200};
+
 int main()
 {
-    const int CELL_SIZE = 110;
-    const int BOARD_LABEL_WIDTH = 50; // Area where numbers and letters are (1-8, A-H)
-    const int PADDING = BOARD_LABEL_WIDTH / 3;
-    const int FONT_SIZE = CELL_SIZE / 5;
-    const int GAME_OVER_TIME = 3000;
-    const int MENU_BAR_HEIGHT = 60;
-    const int SCREEN_WIDTH = CELL_SIZE * 8 + BOARD_LABEL_WIDTH;
-    const int SCREEN_HEIGHT = MENU_BAR_HEIGHT + CELL_SIZE * 8 + BOARD_LABEL_WIDTH;
-    const int BUTTON_HEIGHT = 60;
-    const int BUTTON_WIDTH = SCREEN_WIDTH / 4;
-    const int ICON_BUTTON_HEIGHT = 60;
-    const int ICON_BUTTON_WIDTH = SCREEN_WIDTH / 4 + 5;
-    const int NOTIFICATION_DURATION = 2000;  // Duration in milliseconds
-
-    const Color CELL_COLOR_1 = {150, 77, 34, 255};
-    const Color CELL_COLOR_2 = {238, 220, 151, 255};
-    const Color SIDEBAR_COLOR = {21, 10, 4, 255};
-    const Color HIGHLIGHT_COLOR = {255, 255, 0, 200};
-    const Color TEXT_BACKGROUND = {0, 0, 0, 200};
-
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Chess");
     InitAudioDevice();
@@ -51,16 +51,25 @@ int main()
     Sound castleSound = LoadSound("assets/castle.wav");
 
     int selectedSquare = -1;
-    move_list valid_moves = {.moves = {}, .count = 0};
+    move_list validMoves = {.moves = {}, .count = 0};
 
-    double game_over_timer = 0;
-    double notification_timer = 0;
-    bool show_notification = false;
-    const char* notification_text = NULL;
+    double gameOverTimer = 0;
+    double notificationTimer = 0;
+    bool showNotification = false;
+    const char *notificationText = NULL;
 
     bool showFenDialog = false;
     bool isExportMode = false;
     char fenString[100] = ""; // Buffer for FEN string
+
+    const char *promotionLabels[] = {"Queen", "Rook", "Bishop", "Knight"};
+    piece_type promotionChoicesWhite[] = {WhiteQueen, WhiteRook, WhiteBishop, WhiteKnight};
+    piece_type promotionChoicesBlack[] = {BlackQueen, BlackRook, BlackBishop, BlackKnight};
+    bool showPromotionDialog = false;
+    piece_color promotionColor = CChessWhite;
+    int promotionX = -1;
+    int promotionY = -1;
+    int selectedPromotionOption = -1;
 
     GuiSetStyle(DEFAULT, TEXT_SIZE, FONT_SIZE);
 
@@ -175,17 +184,17 @@ int main()
             int x = selectedSquare % 8;
             int y = selectedSquare / 8;
 
-            valid_moves = get_valid_moves(&g, x, y);
+            validMoves = get_valid_moves(&g, x, y);
 
-            for (uint i = 0; i < valid_moves.count; i++)
+            for (uint i = 0; i < validMoves.count; i++)
             {
-                int circleX = BOARD_LABEL_WIDTH + (valid_moves.moves[i].x_to * CELL_SIZE) + (CELL_SIZE / 2);
-                int circleY = MENU_BAR_HEIGHT + valid_moves.moves[i].y_to * CELL_SIZE + (CELL_SIZE / 2);
+                int circleX = BOARD_LABEL_WIDTH + (validMoves.moves[i].x_to * CELL_SIZE) + (CELL_SIZE / 2);
+                int circleY = MENU_BAR_HEIGHT + validMoves.moves[i].y_to * CELL_SIZE + (CELL_SIZE / 2);
                 DrawCircle(circleX, circleY, CELL_SIZE / 8, HIGHLIGHT_COLOR);
             }
         }
 
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && g.status == InProgress)
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && g.status == InProgress && !showPromotionDialog)
         {
             Vector2 position = GetMousePosition();
             int x_clicked = (position.x - BOARD_LABEL_WIDTH) / CELL_SIZE;
@@ -197,11 +206,14 @@ int main()
                 if (selectedSquare != -1)
                 {
                     bool move_made = false;
-                    for (uint i = 0; i < valid_moves.count; i++)
+                    for (uint i = 0; i < validMoves.count; i++)
                     {
-                        if (valid_moves.moves[i].x_to == x_clicked && valid_moves.moves[i].y_to == y_clicked)
+                        move m = validMoves.moves[i];
+                        if (m.x_to == x_clicked && m.y_to == y_clicked)
                         {
-                            move_result result = make_move(&g, valid_moves.moves[i]);
+                            promotionColor = g.current_turn;
+
+                            move_result result = make_move(&g, m);
                             if (result == None)
                             {
                                 PlaySound(moveSound);
@@ -214,6 +226,15 @@ int main()
                             {
                                 PlaySound(castleSound);
                             }
+                            else if (result == Promotion)
+                            {
+                                // Store the location of the pawn that needs promotion
+                                promotionX = m.x_to;
+                                promotionY = m.y_to;
+                                showPromotionDialog = true;
+
+                                PlaySound(moveSound);
+                            }
 
                             selectedSquare = -1;
                             move_made = true;
@@ -222,13 +243,13 @@ int main()
                             if (status == WhiteWon)
                             {
                                 g.status = WhiteWon;
-                                game_over_timer = GetTime();
+                                gameOverTimer = GetTime();
                                 printf("White Won!\n");
                             }
                             else if (status == BlackWon)
                             {
                                 g.status = BlackWon;
-                                game_over_timer = GetTime();
+                                gameOverTimer = GetTime();
                                 printf("Black Won!\n");
                             }
                             break;
@@ -275,7 +296,7 @@ int main()
         // Draw game over message
         if (g.status == WhiteWon || g.status == BlackWon)
         {
-            if ((GetTime() - game_over_timer) * 1000 > GAME_OVER_TIME)
+            if ((GetTime() - gameOverTimer) * 1000 > GAME_OVER_TIME)
             {
                 reset_game(&g);
             }
@@ -310,7 +331,7 @@ int main()
 
         // Draw GUI in menu bar
         Rectangle resetBtn = (Rectangle){0, 0, BUTTON_WIDTH, BUTTON_HEIGHT};
-        if (GuiButton(resetBtn, "Reset Board"))
+        if (GuiButton(resetBtn, "Reset Board") && !showPromotionDialog)
         {
             reset_game(&g);
             selectedSquare = -1;
@@ -318,7 +339,7 @@ int main()
 
         Rectangle importBtn = (Rectangle){resetBtn.x + resetBtn.width,
                                           0, BUTTON_WIDTH, BUTTON_HEIGHT};
-        if (GuiButton(importBtn, "Import FEN"))
+        if (GuiButton(importBtn, "Import FEN") && !showPromotionDialog)
         {
             showFenDialog = true;
             isExportMode = false;
@@ -327,18 +348,18 @@ int main()
 
         Rectangle exportBtn = (Rectangle){importBtn.x + importBtn.width,
                                           0, BUTTON_WIDTH, BUTTON_HEIGHT};
-        if (GuiButton(exportBtn, "Export FEN"))
+        if (GuiButton(exportBtn, "Export FEN") && !showPromotionDialog)
         {
             export_FEN(&g, fenString);
             SetClipboardText(fenString);
-            notification_text = "FEN copied to clipboard!";
-            notification_timer = GetTime();
-            show_notification = true;
+            notificationText = "FEN copied to clipboard!";
+            notificationTimer = GetTime();
+            showNotification = true;
         }
 
         Rectangle undoBtn = (Rectangle){exportBtn.x + exportBtn.width,
                                         0, ICON_BUTTON_WIDTH, ICON_BUTTON_HEIGHT};
-        if (GuiButton(undoBtn, "<- Undo Move"))
+        if (GuiButton(undoBtn, "<- Undo Move") && !showPromotionDialog)
         {
             undo_last_move(&g);
             selectedSquare = -1;
@@ -352,14 +373,14 @@ int main()
         //     selectedSquare = -1;
         // }
 
-        if (showFenDialog)
+        if (showFenDialog && !showPromotionDialog)
         {
             Rectangle dialogBounds = (Rectangle){SCREEN_WIDTH / 2 - 200, SCREEN_HEIGHT / 2 - 50, 400, 100};
 
             // Handle paste (Ctrl+V)
             if (!isExportMode && (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_V))
             {
-                const char* clipText = GetClipboardText();
+                const char *clipText = GetClipboardText();
                 if (clipText != NULL)
                 {
                     // Ensure we don't overflow the buffer
@@ -371,20 +392,20 @@ int main()
             // Draw the text box
             if (isExportMode)
             {
-                GuiTextBox(dialogBounds, fenString, sizeof(fenString), false);  // Read-only in export mode
+                GuiTextBox(dialogBounds, fenString, sizeof(fenString), false); // Read-only in export mode
             }
             else
             {
-                GuiTextBox(dialogBounds, fenString, sizeof(fenString), true);   // Editable in import mode
+                GuiTextBox(dialogBounds, fenString, sizeof(fenString), true); // Editable in import mode
             }
 
             // Draw buttons
             Rectangle cancelBtn = (Rectangle){dialogBounds.x,
-                                            dialogBounds.y + dialogBounds.height + 10,
-                                            120, 30};
+                                              dialogBounds.y + dialogBounds.height + 10,
+                                              120, 30};
             Rectangle okBtn = (Rectangle){dialogBounds.x + dialogBounds.width - 120,
-                                        dialogBounds.y + dialogBounds.height + 10,
-                                        120, 30};
+                                          dialogBounds.y + dialogBounds.height + 10,
+                                          120, 30};
 
             if (GuiButton(cancelBtn, "Cancel") || IsKeyPressed(KEY_ESCAPE))
             {
@@ -405,9 +426,9 @@ int main()
                     else
                     {
                         g = game_before_import; // Restore the backup if import fails
-                        notification_text = "Invalid FEN string!";
-                        notification_timer = GetTime();
-                        show_notification = true;
+                        notificationText = "Invalid FEN string!";
+                        notificationTimer = GetTime();
+                        showNotification = true;
                     }
                 }
                 showFenDialog = false;
@@ -416,16 +437,16 @@ int main()
             }
         }
 
-        if (show_notification)
+        if (showNotification && !showPromotionDialog)
         {
-            if ((GetTime() - notification_timer) * 1000 > NOTIFICATION_DURATION)
+            if ((GetTime() - notificationTimer) * 1000 > NOTIFICATION_DURATION)
             {
-                show_notification = false;
+                showNotification = false;
             }
             else
             {
                 int messageFontSize = FONT_SIZE;
-                int textWidth = MeasureText(notification_text, messageFontSize);
+                int textWidth = MeasureText(notificationText, messageFontSize);
                 int textHeight = messageFontSize;
                 int padding = 20;
                 int boxWidth = textWidth + padding * 2;
@@ -434,11 +455,58 @@ int main()
                 int boxY = MENU_BAR_HEIGHT + 10;
 
                 DrawRectangle(boxX, boxY, boxWidth, boxHeight, TEXT_BACKGROUND);
-                DrawText(notification_text,
-                        boxX + padding,
-                        boxY + padding,
-                        messageFontSize,
-                        WHITE);
+                DrawText(notificationText,
+                         boxX + padding,
+                         boxY + padding,
+                         messageFontSize,
+                         WHITE);
+            }
+        }
+
+        if (showPromotionDialog)
+        {
+            DrawRectangle(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, Fade(BLACK, 0.4f));
+
+            Rectangle dialogRect = {
+                SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT / 2 - 100, 300, 200};
+
+            GuiWindowBox(dialogRect, "Promote Pawn");
+
+            float buttonWidth = 80;
+            float buttonHeight = 30;
+            float spacing = 10;
+
+            float startX = dialogRect.x + (dialogRect.width - buttonWidth) / 2;
+            float startY = dialogRect.y + 40;
+
+            for (int i = 0; i < 4; i++)
+            {
+                Rectangle btnRect = {
+                    startX,
+                    startY + i * (buttonHeight + spacing),
+                    buttonWidth,
+                    buttonHeight};
+
+                if (GuiButton(btnRect, promotionLabels[i]))
+                {
+                    selectedPromotionOption = i;
+                }
+            }
+
+            if (selectedPromotionOption != -1)
+            {
+                if (promotionColor == CChessWhite)
+                {
+                    g.board[promotionY][promotionX] = promotionChoicesWhite[selectedPromotionOption];
+                }
+                else
+                {
+                    g.board[promotionY][promotionX] = promotionChoicesBlack[selectedPromotionOption];
+                }
+
+                showPromotionDialog = false;
+                selectedPromotionOption = -1;
+                promotionX = promotionY = -1;
             }
         }
 

@@ -444,6 +444,7 @@ move_result make_move(game *game, move move)
         res = PieceCaptured;
     }
 
+    // Move piece
     game->board[move.y_from][move.x_from] = EMPTY;
 
     piece_type destination_piece = game->board[move.y_to][move.x_to];
@@ -453,6 +454,12 @@ move_result make_move(game *game, move move)
     }
 
     game->board[move.y_to][move.x_to] = moving_piece;
+
+    // Handle promotion
+    if ((moving_piece == WhitePawn && move.y_to == 0) || (moving_piece == BlackPawn && move.y_to == 7))
+    {
+        res = Promotion;
+    }
 
     // Handle castling
     if ((moving_piece == WhiteKing || moving_piece == BlackKing) &&
